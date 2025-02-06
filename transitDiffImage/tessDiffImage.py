@@ -4,6 +4,7 @@ import pandas as pd
 from astropy.io import fits
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
+from astropy import wcs
 import astropy.units as u
 import astropy.table
 import numpy as np
@@ -256,6 +257,8 @@ class tessDiffImage:
         priHeader = fitsData[0].header # for the primary table keywords
         
         pixelData = {}
+
+        pixelData["wcs"] = wcs.WCS(fitsData[2].header)
 
         # read important keywords
         # the reference pixel coordinates are the low corner of the central pixel
