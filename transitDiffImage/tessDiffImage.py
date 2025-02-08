@@ -83,7 +83,7 @@ class tessDiffImage:
         self.outputDir = outputDir
         self.cleanFiles = cleanFiles
         self.qlpFlagsLocation = qlpFlagsLocation
-
+        self.thinPickle = thinPickle
 
         self.baryCorrector = bc.barycentricCorrection(_spiceFileLocation)
 
