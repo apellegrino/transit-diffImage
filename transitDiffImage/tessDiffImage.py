@@ -69,7 +69,8 @@ class tessDiffImage:
             maxOrbits = 148,
             cleanFiles = True,
             outputDir = "./",
-            qlpFlagsLocation = None):
+            qlpFlagsLocation = None,
+            thinPickle = False):
             
         self.ticData = ticData
         self.nPixOnSide = nPixOnSide
@@ -198,8 +199,15 @@ class tessDiffImage:
         inOtherTransitIndices = np.array(inOtherTransitIndices).astype(int)
         pixelData["inOtherTransit"] = np.zeros(pixelData["quality"].shape, dtype=int)
         pixelData["inOtherTransit"][inOtherTransitIndices] = 1
-        
+
         pixelData["quality"] += pixelData["inOtherTransit"]
+
+        mean_flux = np.nanmean(pixelData['flux'], axis=(1,2))
+        min_bg = np.nanmin(mean_flux)
+        pixelData["highBackground"] = (mean_flux/min_bg > 1.3) | (mean_flux - min_bg > 200)
+
+        pixelData["quality"] += pixelData["highBackground"]
+        
 
         inTransitIndices, outTransitIndices, transitIndex, diffImageData = self.find_transits(pixelData, planetData, allowedBadCadences = allowedBadCadences)
 #        print(inTransitIndices)
@@ -212,6 +220,13 @@ class tessDiffImage:
                 self.draw_lc_transits(pixelData, planetData, inTransitIndices, outTransitIndices, transitIndex)
 
         f = open(os.path.join(self.outputDir, self.ticName, "imageData_" + planetData["planetID"] + "_sector" + str(pixelData["sector"]) + ".pickle"), 'wb')
+
+        if self.thinPickle:
+            del pixelData['flux']
+            del pixelData['fluxErr']
+            del pixelData['background']
+            del pixelData['backgroundErr']
+
         pickle.dump([diffImageData, catalogData, pixelData, inTransitIndices, outTransitIndices, transitIndex, planetData], f, pickle.HIGHEST_PROTOCOL)
         f.close()
 
