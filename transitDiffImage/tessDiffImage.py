@@ -13,6 +13,7 @@ import matplotlib.patheffects as pe
 from astroquery.gaia import Gaia
 from astroquery.mast import Catalogs
 from scipy.optimize import minimize
+from scipy.interpolate import BSpline
 import tess_stars2px
 import pickle
 from scanf import scanf
@@ -58,6 +59,33 @@ def pix_to_ra_dec(sector, cam, ccd, col, row):
     r = minimize(pix_distance, seed, method="L-BFGS-B",
                      args = (sector, cam, ccd, col, row))
     return r.x
+
+def make_bg_dmatrix(shape, k=2, n_basis=5):
+    bases = []
+
+#     t = np.append(np.append([0]*k,np.linspace(0,shape[1]-1,n_basis-k+1)),[shape[1]-1]*k)
+#     col_range = np.arange(shape[1])
+#     spl = BSpline.design_matrix(np.arange(shape[1]), t, k)
+
+#     for v in (spl.toarray()*np.tile(np.sin(col_range/2*np.pi),(n_basis,1)).T).T:
+#         bases.append(np.tile(v,(shape[1],1)).flatten())
+#     for v in (spl.toarray()*np.tile(np.cos(col_range/2*np.pi),(n_basis,1)).T).T:
+#         bases.append(np.tile(v,(shape[1],1)).flatten())
+
+    x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
+    bases.append(x.flatten())
+    bases.append(y.flatten())
+    bases.append(np.ones(np.prod(shape)))
+
+    return np.array(bases).T
+
+def linear_bg_amplitude(img):
+    data = img.flatten()
+    mask = ~np.isnan(data)
+    A_nomask = make_bg_dmatrix((41,41))
+    A = A_nomask.copy()[mask,:]
+    w = np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))
+    return np.hypot(*w[:2])
 
 class tessDiffImage:
     def __init__(self,
@@ -201,11 +229,6 @@ class tessDiffImage:
         pixelData["inOtherTransit"][inOtherTransitIndices] = 1
 
         pixelData["quality"] += pixelData["inOtherTransit"]
-
-        mean_flux = np.nanmean(pixelData['flux'], axis=(1,2))
-        pixelData["highBackground"] = mean_flux > 700 #e-/sec
-
-        pixelData["quality"] += pixelData["highBackground"]
         
 
         inTransitIndices, outTransitIndices, transitIndex, diffImageData = self.find_transits(pixelData, planetData, allowedBadCadences = allowedBadCadences)
@@ -408,13 +431,14 @@ class tessDiffImage:
 ##                print("building nBadCadences = " + str(nBadCadences))
 #                DiffImageDataList.append([])
 #                continue
-            DiffImageDataList.append(self.make_difference_image(pixelData, thisTransitInIndices, thisTransitOutIndices))
 
-            inTransitIndices.append(thisTransitInIndices)
-            outTransitIndices.append(thisTransitOutIndices)
-#            print("thisTransitBadCadences = " + str(thisTransitBadCadences))
-            nBadCadences.append(thisTransitBadCadences)
-#            print("building nBadCadences = " + str(nBadCadences))
+            # Check a diff image of an individual transit before appending to list
+            diData = self.make_difference_image(pixelData, thisTransitInIndices, thisTransitOutIndices)
+            if ~np.all(np.isnan(diData['diffImage'])) and linear_bg_amplitude(diData['diffImage']) < 0.05:
+                DiffImageDataList.append(diData)
+                inTransitIndices.append(thisTransitInIndices)
+                outTransitIndices.append(thisTransitOutIndices)
+                nBadCadences.append(thisTransitBadCadences)
 
         if len(nBadCadences) == 0:
             nBadCadences = [0]
