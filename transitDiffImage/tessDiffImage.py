@@ -203,8 +203,7 @@ class tessDiffImage:
         pixelData["quality"] += pixelData["inOtherTransit"]
 
         mean_flux = np.nanmean(pixelData['flux'], axis=(1,2))
-        min_bg = np.nanmin(mean_flux)
-        pixelData["highBackground"] = (mean_flux/min_bg > 1.3) | (mean_flux - min_bg > 200)
+        pixelData["highBackground"] = mean_flux > 700 #e-/sec
 
         pixelData["quality"] += pixelData["highBackground"]
         
