@@ -439,7 +439,12 @@ class tessDiffImage:
                 inTransitIndices.append(thisTransitInIndices)
                 outTransitIndices.append(thisTransitOutIndices)
                 nBadCadences.append(thisTransitBadCadences)
-
+            else:
+                DiffImageDataList.append(self.make_difference_image(pixelData, [], []))
+                inTransitIndices.append([])
+                outTransitIndices.append([])
+                nBadCadences.append(len(thisTransitInIndices) + len(thisTransitOutIndices))
+            
         if len(nBadCadences) == 0:
             nBadCadences = [0]
         alert=False
