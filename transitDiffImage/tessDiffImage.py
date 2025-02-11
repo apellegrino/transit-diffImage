@@ -79,13 +79,37 @@ def make_bg_dmatrix(shape, k=2, n_basis=5):
 
     return np.array(bases).T
 
-def linear_bg_amplitude(img):
+def linear_bg_fit(img):
     data = img.flatten()
     mask = ~np.isnan(data)
-    A_nomask = make_bg_dmatrix((41,41))
+    A_nomask = make_bg_dmatrix(img.shape)
     A = A_nomask.copy()[mask,:]
-    w = np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))
-    return np.hypot(*w[:2])
+    # do not include constant offset in returned weights
+    return np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))[:-1]
+
+def straps_bg_fit(im):
+    # Crop out all-nan columns
+    im = im[:,~np.all(np.isnan(im), axis=0)]
+
+    # Make straps in 2-on 2-off pattern
+    cube = np.zeros((im.shape[0], im.shape[1], im.shape[1]-9))
+    for i in range(im.shape[1]-10):
+        cube[:,i,i] = 1
+        cube[:,i+1,i] = 1
+        cube[:,i+4,i] = 1
+        cube[:,i+5,i] = 1
+        cube[:,i+8,i] = 1
+        cube[:,i+9,i] = 1
+
+    # Constant vector
+    cube[:,:,-1] = 1
+
+    data = im.flatten()
+    # Still need to mask all-nan rows
+    mask = ~np.isnan(data)
+    A = cube.reshape((im.shape[0]*im.shape[1], im.shape[1]-9))[mask,:]
+    # do not include constant offset in returned weights
+    return np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))[:-1]
 
 class tessDiffImage:
     def __init__(self,
@@ -434,16 +458,31 @@ class tessDiffImage:
 
             # Check a diff image of an individual transit before appending to list
             diData = self.make_difference_image(pixelData, thisTransitInIndices, thisTransitOutIndices)
-            if ~np.all(np.isnan(diData['diffImage'])) and linear_bg_amplitude(diData['diffImage']) < 0.05:
-                DiffImageDataList.append(diData)
-                inTransitIndices.append(thisTransitInIndices)
-                outTransitIndices.append(thisTransitOutIndices)
-                nBadCadences.append(thisTransitBadCadences)
-            else:
+            if np.all(np.isnan(diData['diffImage'])):
+                print("All NaN diff. image from one transit")
                 DiffImageDataList.append(self.make_difference_image(pixelData, [], []))
                 inTransitIndices.append([])
                 outTransitIndices.append([])
                 nBadCadences.append(len(thisTransitInIndices) + len(thisTransitOutIndices))
+            else:
+                linear_weights = linear_bg_fit(diData['diffImage'])
+                linear_bg_test = False #np.hypot(*linear_weights[:2]) > 0.05   # False == pass
+                straps_weights = straps_bg_fit(diData['diffImage'])
+                straps_bg_test = False #np.any(np.abs(straps_weights) > 0.6)   # False == pass
+                bloom_bg_test = False #np.any(np.nanmedian(diData['meanOutTransit'], axis=0) < 0) # False == pass
+                print(f"TIC {self.ticData['id']} linear_bg_test == {linear_bg_test}", flush=True)
+                print(f"TIC {self.ticData['id']} straps_bg_test == {straps_bg_test}", flush=True)
+                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} bloom_bg_test == {bloom_bg_test}", flush=True)
+                if not linear_bg_test and not straps_bg_test and not bloom_bg_test:
+                    DiffImageDataList.append(diData)
+                    inTransitIndices.append(thisTransitInIndices)
+                    outTransitIndices.append(thisTransitOutIndices)
+                    nBadCadences.append(thisTransitBadCadences)
+                else:
+                    DiffImageDataList.append(self.make_difference_image(pixelData, [], []))
+                    inTransitIndices.append([])
+                    outTransitIndices.append([])
+                    nBadCadences.append(len(thisTransitInIndices) + len(thisTransitOutIndices))
             
         if len(nBadCadences) == 0:
             nBadCadences = [0]
