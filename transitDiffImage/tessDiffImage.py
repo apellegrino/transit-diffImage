@@ -80,6 +80,7 @@ def make_bg_dmatrix(shape, k=2, n_basis=5):
     return np.array(bases).T
 
 def linear_bg_fit(img):
+    if np.all(np.isnan(img)): return np.array([0.0, 0.0])
     data = img.flatten()
     mask = ~np.isnan(data)
     A_nomask = make_bg_dmatrix(img.shape)
@@ -88,6 +89,7 @@ def linear_bg_fit(img):
     return np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))[:-1]
 
 def straps_bg_fit(im):
+    if np.all(np.isnan(im)): return np.array([0.0])
     # Crop out all-nan columns
     im = im[:,~np.all(np.isnan(im), axis=0)]
 
@@ -459,30 +461,27 @@ class tessDiffImage:
             # Check a diff image of an individual transit before appending to list
             diData = self.make_difference_image(pixelData, thisTransitInIndices, thisTransitOutIndices)
             if np.all(np.isnan(diData['diffImage'])):
-                print("All NaN diff. image from one transit")
-                DiffImageDataList.append(self.make_difference_image(pixelData, [], []))
-                inTransitIndices.append([])
-                outTransitIndices.append([])
-                nBadCadences.append(len(thisTransitInIndices) + len(thisTransitOutIndices))
+                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} All NaN diff. image from one transit", flush=True)
+                print(f"len(thisTransitInIndices) == {len(thisTransitInIndices)}", flush=True)
+                print(f"len(thisTransitOutIndices) == {len(thisTransitOutIndices)}", flush=True)
+
+            DiffImageDataList.append(diData)
+            inTransitIndices.append(thisTransitInIndices)
+            outTransitIndices.append(thisTransitOutIndices)
+
+            linear_weights = linear_bg_fit(diData['diffImage'])
+            linear_bg_test = np.hypot(*linear_weights[:2]) < 0.05
+            straps_weights = straps_bg_fit(diData['diffImage'])
+            straps_bg_test = True #np.all(np.abs(straps_weights) < 0.6)
+            bloom_bg_test = np.all(np.nanmedian(diData['meanOutTransit'], axis=0) > 0)
+            if not linear_bg_test:
+                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed linear BG test")
+            if not bloom_bg_test:
+                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed bloom BG test")
+            if linear_bg_test and straps_bg_test and bloom_bg_test:
+                nBadCadences.append(thisTransitBadCadences)
             else:
-                linear_weights = linear_bg_fit(diData['diffImage'])
-                linear_bg_test = False #np.hypot(*linear_weights[:2]) > 0.05   # False == pass
-                straps_weights = straps_bg_fit(diData['diffImage'])
-                straps_bg_test = False #np.any(np.abs(straps_weights) > 0.6)   # False == pass
-                bloom_bg_test = False #np.any(np.nanmedian(diData['meanOutTransit'], axis=0) < 0) # False == pass
-                print(f"TIC {self.ticData['id']} linear_bg_test == {linear_bg_test}", flush=True)
-                print(f"TIC {self.ticData['id']} straps_bg_test == {straps_bg_test}", flush=True)
-                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} bloom_bg_test == {bloom_bg_test}", flush=True)
-                if not linear_bg_test and not straps_bg_test and not bloom_bg_test:
-                    DiffImageDataList.append(diData)
-                    inTransitIndices.append(thisTransitInIndices)
-                    outTransitIndices.append(thisTransitOutIndices)
-                    nBadCadences.append(thisTransitBadCadences)
-                else:
-                    DiffImageDataList.append(self.make_difference_image(pixelData, [], []))
-                    inTransitIndices.append([])
-                    outTransitIndices.append([])
-                    nBadCadences.append(len(thisTransitInIndices) + len(thisTransitOutIndices))
+                nBadCadences.append(len(thisTransitInIndices) + len(thisTransitOutIndices))
             
         if len(nBadCadences) == 0:
             nBadCadences = [0]
@@ -528,7 +527,8 @@ class tessDiffImage:
                 diffImageData["diffSNRImage"] = diffImageData["diffImage"]/diffImageData["diffImageSigma"]
             else:
                 print("no good transits to sum into average images!!!")
-        
+
+        diffImageData['nTransitImages'] = nTransitImages
         inTransitIndices = np.unique(sum(np.array(inTransitIndices, dtype=object)[goodTransits].tolist(), []))
         outTransitIndices = np.unique(sum(np.array(outTransitIndices, dtype=object)[goodTransits].tolist(), []))
 #        print("final inTransitIndices = " + str(inTransitIndices))
