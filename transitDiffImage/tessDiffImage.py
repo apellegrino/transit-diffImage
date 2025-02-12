@@ -88,14 +88,15 @@ def linear_bg_fit(img):
     # do not include constant offset in returned weights
     return np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))[:-1]
 
-def straps_bg_fit(im):
-    if np.all(np.isnan(im)): return np.array([0.0])
+def straps_bg_fit(img):
+    if np.all(np.isnan(img)): return np.array([0.0])
     # Crop out all-nan columns
-    im = im[:,~np.all(np.isnan(im), axis=0)]
+    # Slice by view, don't modify
+    img = img[:,~np.all(np.isnan(img), axis=0)].copy()
 
     # Make straps in 2-on 2-off pattern
-    cube = np.zeros((im.shape[0], im.shape[1], im.shape[1]-9))
-    for i in range(im.shape[1]-10):
+    cube = np.zeros((img.shape[0], img.shape[1], img.shape[1]-9))
+    for i in range(img.shape[1]-10):
         cube[:,i,i] = 1
         cube[:,i+1,i] = 1
         cube[:,i+4,i] = 1
@@ -106,10 +107,10 @@ def straps_bg_fit(im):
     # Constant vector
     cube[:,:,-1] = 1
 
-    data = im.flatten()
+    data = img.flatten()
     # Still need to mask all-nan rows
     mask = ~np.isnan(data)
-    A = cube.reshape((im.shape[0]*im.shape[1], im.shape[1]-9))[mask,:]
+    A = cube.reshape((img.shape[0]*img.shape[1], img.shape[1]-9))[mask,:]
     # do not include constant offset in returned weights
     return np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))[:-1]
 
@@ -425,7 +426,7 @@ class tessDiffImage:
             thisTransitBadCadences = np.sum(pixelData["quality"][thisTransitInIndices] != 0) + np.sum(pixelData["quality"][thisTransitOutIndices] != 0)
 
             # check if we have indices covering the transits
-            acceptableTransitLength = np.floor(self.allowedInTransitLossFraction*expectedInTransitLength)
+            acceptableTransitLength = np.floor(self.allowedInTransitLossFraction*expectedInTransitLength).astype(int)
             if len(thisTransitInIndices) < acceptableTransitLength:
                 print("not enough in transit indices: " + str([len(thisTransitInIndices), acceptableTransitLength]))
                 print("adding " + str(acceptableTransitLength - len(thisTransitInIndices)) + " to thisTransitBadCadences")
@@ -471,22 +472,28 @@ class tessDiffImage:
 
             linear_weights = linear_bg_fit(diData['diffImage'])
             linear_bg_test = np.hypot(*linear_weights[:2]) < 0.05
-            straps_weights = straps_bg_fit(diData['diffImage'])
-            straps_bg_test = True #np.all(np.abs(straps_weights) < 0.6)
-            bloom_bg_test = np.all(np.nanmedian(diData['meanOutTransit'], axis=0) > 0)
             if not linear_bg_test:
                 print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed linear BG test")
+
+            straps_weights = straps_bg_fit(diData['diffImage'])
+            print(straps_weights)
+            straps_bg_test = np.max(np.abs(straps_weights)) < 2
+            if not straps_bg_test:
+                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed straps BG test")
+
+            bloom_bg_test = ~np.any(np.nanmedian(diData['meanOutTransit'], axis=0) < 0)
             if not bloom_bg_test:
                 print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed bloom BG test")
+
             if linear_bg_test and straps_bg_test and bloom_bg_test:
                 nBadCadences.append(thisTransitBadCadences)
             else:
-                nBadCadences.append(len(thisTransitInIndices) + len(thisTransitOutIndices))
-            
+                nBadCadences.append(int(max(len(thisTransitInIndices) + len(thisTransitOutIndices), thisTransitBadCadences)))
+        
         if len(nBadCadences) == 0:
             nBadCadences = [0]
         alert=False
-#        print("nBadCadences = " + str(nBadCadences))
+        print("nBadCadences = " + str(nBadCadences))
         if np.min(nBadCadences) > allowedBadCadences:
             print("No good transits based on %i allowed bad cadences; using transit with %i bad cadences." % (allowedBadCadences, np.min(nBadCadences)))
             alert=True
