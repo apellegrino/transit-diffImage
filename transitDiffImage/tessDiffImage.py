@@ -60,60 +60,6 @@ def pix_to_ra_dec(sector, cam, ccd, col, row):
                      args = (sector, cam, ccd, col, row))
     return r.x
 
-def make_bg_dmatrix(shape, k=2, n_basis=5):
-    bases = []
-
-#     t = np.append(np.append([0]*k,np.linspace(0,shape[1]-1,n_basis-k+1)),[shape[1]-1]*k)
-#     col_range = np.arange(shape[1])
-#     spl = BSpline.design_matrix(np.arange(shape[1]), t, k)
-
-#     for v in (spl.toarray()*np.tile(np.sin(col_range/2*np.pi),(n_basis,1)).T).T:
-#         bases.append(np.tile(v,(shape[1],1)).flatten())
-#     for v in (spl.toarray()*np.tile(np.cos(col_range/2*np.pi),(n_basis,1)).T).T:
-#         bases.append(np.tile(v,(shape[1],1)).flatten())
-
-    x, y = np.meshgrid(np.arange(shape[1]), np.arange(shape[0]))
-    bases.append(x.flatten())
-    bases.append(y.flatten())
-    bases.append(np.ones(np.prod(shape)))
-
-    return np.array(bases).T
-
-def linear_bg_fit(img):
-    if np.all(np.isnan(img)): return np.array([0.0, 0.0])
-    data = img.flatten()
-    mask = ~np.isnan(data)
-    A_nomask = make_bg_dmatrix(img.shape)
-    A = A_nomask.copy()[mask,:]
-    # do not include constant offset in returned weights
-    return np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))[:-1]
-
-def straps_bg_fit(img):
-    if np.all(np.isnan(img)): return np.array([0.0])
-    # Crop out all-nan columns
-    # Slice by view, don't modify
-    img = img[:,~np.all(np.isnan(img), axis=0)].copy()
-
-    # Make straps in 2-on 2-off pattern
-    cube = np.zeros((img.shape[0], img.shape[1], img.shape[1]-9))
-    for i in range(img.shape[1]-10):
-        cube[:,i,i] = 1
-        cube[:,i+1,i] = 1
-        cube[:,i+4,i] = 1
-        cube[:,i+5,i] = 1
-        cube[:,i+8,i] = 1
-        cube[:,i+9,i] = 1
-
-    # Constant vector
-    cube[:,:,-1] = 1
-
-    data = img.flatten()
-    # Still need to mask all-nan rows
-    mask = ~np.isnan(data)
-    A = cube.reshape((img.shape[0]*img.shape[1], img.shape[1]-9))[mask,:]
-    # do not include constant offset in returned weights
-    return np.linalg.solve(A.T.dot(A), A.T.dot(data[mask]))[:-1]
-
 class tessDiffImage:
     def __init__(self,
             ticData,
@@ -469,26 +415,7 @@ class tessDiffImage:
             DiffImageDataList.append(diData)
             inTransitIndices.append(thisTransitInIndices)
             outTransitIndices.append(thisTransitOutIndices)
-
-            linear_weights = linear_bg_fit(diData['diffImage'])
-            linear_bg_test = np.hypot(*linear_weights[:2]) < 0.05
-            if not linear_bg_test:
-                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed linear BG test")
-
-            straps_weights = straps_bg_fit(diData['diffImage'])
-            print(straps_weights)
-            straps_bg_test = np.max(np.abs(straps_weights)) < 2
-            if not straps_bg_test:
-                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed straps BG test")
-
-            bloom_bg_test = ~np.any(np.nanmedian(diData['meanOutTransit'], axis=0) < 0)
-            if not bloom_bg_test:
-                print(f"TIC {self.ticData['id']} sector {self.ticData['sector']} failed bloom BG test")
-
-            if linear_bg_test and straps_bg_test and bloom_bg_test:
-                nBadCadences.append(thisTransitBadCadences)
-            else:
-                nBadCadences.append(int(max(len(thisTransitInIndices) + len(thisTransitOutIndices), thisTransitBadCadences)))
+            nBadCadences.append(thisTransitBadCadences)
         
         if len(nBadCadences) == 0:
             nBadCadences = [0]
