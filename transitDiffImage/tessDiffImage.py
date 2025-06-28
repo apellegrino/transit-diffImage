@@ -430,6 +430,8 @@ class tessDiffImage:
         
         diffImageData = {}
         nTransitImages = 0
+        diffImageData["sepDiffImages"] = []
+        diffImageData["sepDiffImagesSigma"] = []
         if len(DiffImageDataList) > 0:
             diffImageData["diffImage"] = np.zeros(pixelData["flux"][0,:,:].shape)
             diffImageData["diffImageSigma"] = np.zeros(pixelData["flux"][0,:,:].shape)
@@ -444,6 +446,8 @@ class tessDiffImage:
 #                    print("adding transit")
 #                    if len(DiffImageDataList[i]) == 0:
 #                        print(DiffImageDataList[i])
+                    diffImageData["sepDiffImages"].append(DiffImageDataList[i]["diffImage"])
+                    diffImageData["sepDiffImagesSigma"].append(DiffImageDataList[i]["diffImageSigma"])
                     diffImageData["diffImage"] += DiffImageDataList[i]["diffImage"]
                     diffImageData["diffImageSigma"] += DiffImageDataList[i]["diffImageSigma"]**2
                     diffImageData["meanInTransit"] += DiffImageDataList[i]["meanInTransit"]
@@ -451,6 +455,10 @@ class tessDiffImage:
                     diffImageData["meanOutTransit"] += DiffImageDataList[i]["meanOutTransit"]
                     diffImageData["meanOutTransitSigma"] += DiffImageDataList[i]["meanOutTransitSigma"]**2
                     nTransitImages += 1
+
+            diffImageData["sepDiffImages"] = np.array(diffImageData["sepDiffImages"])
+            diffImageData["sepDiffImagesSigma"] = np.array(diffImageData["sepDiffImagesSigma"])
+
             if nTransitImages > 0:
                 diffImageData["diffImage"] /= nTransitImages
                 diffImageData["diffImageSigma"] = np.sqrt(diffImageData["diffImageSigma"])/nTransitImages
