@@ -13,7 +13,6 @@ import matplotlib.patheffects as pe
 from astroquery.gaia import Gaia
 from astroquery.mast import Catalogs
 from scipy.optimize import minimize
-from scipy.interpolate import BSpline
 import tess_stars2px
 import pickle
 from scanf import scanf
@@ -345,6 +344,7 @@ class tessDiffImage:
         transitTimes, transitIndex = self.find_transit_times(pixelData, planetData)
 #        print("transitTimes = " + str(transitTimes))
         if len(transitTimes) == 0:
+            print("No transit times found")
             return [],[],[],{}
           
         durationDays = planetData["durationHours"]/24;
@@ -481,9 +481,9 @@ class tessDiffImage:
 
     def make_difference_image(self, pixelData, inTransitIndices, outTransitIndices):
         meanInTransit = np.nanmean(pixelData["flux"][inTransitIndices,::-1,:], axis=0)
-        meanInTransitSigma = np.sqrt(np.sum(pixelData["fluxErr"][inTransitIndices,::-1,:]**2, axis=0)/len(inTransitIndices))
+        meanInTransitSigma = np.sqrt(np.sum(pixelData["fluxErr"][inTransitIndices,::-1,:]**2, axis=0))/len(inTransitIndices)
         meanOutTransit = np.nanmean(pixelData["flux"][outTransitIndices,::-1,:], axis=0)
-        meanOutTransitSigma = np.sqrt(np.sum(pixelData["fluxErr"][outTransitIndices,::-1,:]**2, axis=0)/len(outTransitIndices))
+        meanOutTransitSigma = np.sqrt(np.sum(pixelData["fluxErr"][outTransitIndices,::-1,:]**2, axis=0))/len(outTransitIndices)
         diffImage = meanOutTransit-meanInTransit
         diffImageSigma = np.sqrt((meanInTransitSigma**2)+(meanOutTransitSigma**2))
         diffSNRImage = diffImage/diffImageSigma
@@ -568,7 +568,7 @@ class tessDiffImage:
         deltaDec = 3600*(correctedDec - ticCatalog["correctedDec"][targetIndex])
         separation = np.sqrt(deltaRa**2 + deltaDec**2)
 
-        catalogData["ticID"] = ticID[theseStars]
+        catalogData["ticID"] = ticID[theseStars].astype("str")
         catalogData["ticColPix"] = ticColPix[theseStars]
         catalogData["ticRowPix"] = ticRowPix[theseStars]
         catalogData["correctedRa"] = correctedRa[np.isin(ticCatalog["ID"], catalogData["ticID"])]
@@ -578,7 +578,7 @@ class tessDiffImage:
         catalogData["separation"] = separation[np.isin(ticCatalog["ID"], catalogData["ticID"])]
         catalogData["ticMag"] = ticCatalog["Tmag"][np.isin(ticCatalog["ID"], catalogData["ticID"])]
         catalogData["ticFlux"] = mag2flux(catalogData["ticMag"])
-#        print("ticFlux = " + str(catalogData["ticFlux"]))
+    #    print("ticFlux = " + str(catalogData["ticFlux"]))
         catalogData["ticFluxNorm"] = np.sqrt(0.999*catalogData["ticFlux"]/np.max(catalogData["ticFlux"]) + 0.001)
     #    print([len(catalogData["ticID"]), len(catalogData["ticMag"])])
 
